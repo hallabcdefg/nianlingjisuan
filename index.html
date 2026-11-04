@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>身份证年龄数据分析工具</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-top: 10px;
+        }
+        .input-section {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        textarea {
+            width: 100%;
+            padding: 8px;
+            margin-bottom: 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            height: 250px;
+            font-family: monospace;
+            font-size: 14px;
+            line-height: 1.4;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            flex: 1;
+            min-width: 120px;
+        }
+        button.clear-btn {
+            background-color: #f44336;
+        }
+        button.validate-btn {
+            background-color: #2196F3;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .results {
+            margin-top: 20px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+            table-layout: fixed;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            word-wrap: break-word;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .summary {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        /* 正常方案 - 红色 */
+        .normal-group {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .normal-group h3 {
+            color: #d32f2f !important;
+        }
+
+        /* 活动方案 - 绿色 */
+        .special-group {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+        .special-group h3 {
+            color: #2e7d32 !important;
+        }
+
+        .summary h3 {
+            font-size: 1.2em;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }
+        .summary p {
+            margin: 8px 0;
+        }
+        .conclusion {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .validation-info {
+            background-color: #fff3cd;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+            font-size: 0.9em;
+            line-height: 1.5;
+        }
+        .invalid-row {
+            background-color: #ffebee !important;
+        }
+        .over70-row {
+            background-color: #ffcdd2 !important;
+            font-weight: bold;
+        }
+        .age-yes {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .fallback-row {
+            color: #d32f2f !important;
+            background-color: #ffebee !important;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>身份证年龄数据分析工具 </h1>
+        
+        <div class="input-section">
+            <label for="currentDate">当前日期（默认当天，可手动修改）：</label>
+            <input type="date" id="currentDate">
+            
+            <label for="idCards">请输入身份证号码列表（每行一个）：</label>
+            <textarea id="idCards" placeholder="请输入身份证号码，每行一个"></textarea>
+            
+            <div class="button-group">
+                <button onclick="analyzeData()">开始分析</button>
+                <button class="validate-btn" onclick="validateInput()">验证数据</button>
+                <button class="clear-btn" onclick="clearInput()">一键清空</button>
+            </div>
+        </div>
+        
+        <div id="validationInfo" class="validation-info" style="display:none;"></div>
+        
+        <div id="results" class="results" style="display:none;">
+            <div id="summary"></div>
+            <div id="detailTable"></div>
+            <div id="conclusion" class="conclusion"></div>
+        </div>
+    </div>
+
+    <script>
+        // 日期格式化：yyyy-MM-dd
+        function formatDate(date) {
+            const y = date.getFullYear();
+            const m = String(date.getMonth() + 1).padStart(2, '0');
+            const d = String(date.getDate()).padStart(2, '0');
+            return `${y}-${m}-${d}`;
+        }
+
+        // 页面加载时自动填入当天日期（仍可手动修改）
+        document.getElementById('currentDate').value = formatDate(new Date());
+        
+        // 验证输入
+        function validateInput() {
+            const idCardsText = document.getElementById('idCards').value;
+            const idCards = idCardsText.split('\n').filter(id => id.trim() !== '');
+            
+            let validCount = 0;
+            let invalidCount = 0;
+            let correctedCount = 0;
+            let errorDetails = [];
+            
+            for (let i = 0; i < idCards.length; i++) {
+                const originalId = idCards[i].trim();
+                const result = validateAndCorrectId(originalId);
+                
+                if (result.isValid) {
+                    validCount++;
+                    if (result.wasCorrected) correctedCount++;
+                } else {
+                    invalidCount++;
+                    errorDetails.push(`第${i+1}行: ${originalId} → ${result.error}`);
+                }
+            }
+            
+            let message = `验证结果: ✅ ${validCount} 个有效，❌ ${invalidCount} 个无效`;
+            if (correctedCount > 0) message += `，🔧 ${correctedCount} 个已自动校准`;
+            
+            if (errorDetails.length > 0) {
+                message += '<br><br>错误详情:<br>' + errorDetails.join('<br>');
+            }
+            
+            const infoEl = document.getElementById('validationInfo');
+            infoEl.innerHTML = message;
+            infoEl.style.display = 'block';
+        }
+        
+        // 主分析函数
+        function analyzeData() {
+            const currentDateStr = document.getElementById('currentDate').value;
+            const idCardsText = document.getElementById('idCards').value;
+            
+            if (!currentDateStr) {
+                alert('请选择当前日期');
+                return;
+            }
+            if (!idCardsText.trim()) {
+                alert('请输入身份证号码');
+                return;
+            }
+
+            const currentDate = new Date(currentDateStr);
+            const idCards = idCardsText.split('\n').map(line => line.trim()).filter(id => id !== '');
+            
+            const allResults = [];
+            idCards.forEach(id => {
+                const res = analyzeIdCard(id, currentDate);
+                allResults.push(res);
+            });
+            
+            const validResults = allResults.filter(r => r && r.isValid);
+            const stats = calculateStats(validResults);
+            displayResults(stats, allResults, idCards);
+        }
+        
+        // 身份证校验与修正
+        function validateAndCorrectId(idCard) {
+            let cleanId = idCard.trim().toUpperCase().replace(/[^0-9X]/g, '');
+            if (cleanId.length < 15) {
+                return { isValid: false, error: '长度不足', wasCorrected: false };
+            }
+
+            let correctedId = cleanId;
+            let wasCorrected = false;
+
+            // 15位转18位
+            if (cleanId.length === 15) {
+                try {
+                    let birth = '19' + cleanId.substr(6,6);
+                    let body = cleanId.substr(0,6) + birth;
+                    let code = calculateCheckCode(body);
+                    correctedId = body + code;
+                    wasCorrected = true;
+                } catch(e) {
+                    return { isValid: false, error: '15位转换失败', wasCorrected: false };
+                }
+            }
+
+            if (correctedId.length !== 18) {
+                return { isValid: false, error: '非18位格式', wasCorrected: false };
+            }
+
+            if (!/^\d{17}[\dX]$/.test(correctedId)) {
+                return { isValid: false, error: '格式非法', wasCorrected: false };
+            }
+
+            // 校验码修正
+            let realCode = calculateCheckCode(correctedId.substr(0,17));
+            if (correctedId[17] !== realCode) {
+                correctedId = correctedId.substr(0,17) + realCode;
+                wasCorrected = true;
+            }
+
+            return {
+                isValid: true,
+                correctedId: correctedId,
+                wasCorrected: wasCorrected,
+                error: null
+            };
+        }
+        
+        // 兜底推算函数：标准解析失败时调用
+        function fallbackAgeCalculate(cleanId, currentDate) {
+            // 至少需要14位才能取到第7-14位（索引6到13）
+            if (cleanId.length < 14) return null;
+            
+            // 取第7-8位（出生年份前两位）
+            const centuryPrefix = cleanId.substr(6, 2);
+            // 只接受19或20开头
+            if (centuryPrefix !== '19' && centuryPrefix !== '20') return null;
+            
+            // 取出生年份
+            const y = parseInt(cleanId.substr(6, 4));
+            const currentYear = currentDate.getFullYear();
+            // 出生年份晚于当前年则无效
+            if (y > currentYear) return null;
+            
+            // 取月日部分
+            const mStr = cleanId.substr(10, 2);
+            const dStr = cleanId.substr(12, 2);
+            const m = parseInt(mStr);
+            const d = parseInt(dStr);
+            
+            let age;
+            let birthDate;
+            let calcType;
+            
+            // 校验月日是否合法
+            const testDate = new Date(y, m - 1, d);
+            const isValidMD = testDate.getFullYear() === y 
+                           && testDate.getMonth() === m - 1 
+                           && testDate.getDate() === d
+                           && m >= 1 && m <= 12
+                           && d >= 1 && d <= 31;
+            
+            if (isValidMD) {
+                // 月日合法，精确到周岁
+                age = currentYear - y;
+                let curMD = currentDate.getMonth() * 100 + currentDate.getDate();
+                let birMD = (m - 1) * 100 + d;
+                if (curMD < birMD) age--;
+                birthDate = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                calcType = '🟠 推算精确到日';
+            } else {
+                // 月日非法，只按年份推算
+                age = currentYear - y;
+                birthDate = `${y}-${mStr}-${dStr}（非法日期）`;
+                calcType = '🟠 按年份推算';
+            }
+            
+            // 年龄范围保护 0~120
+            if (age < 0 || age > 120) return null;
+            
+            // 性别尝试从第17位取（如果长度够）
+            let gender = '未知';
+            if (cleanId.length >= 17) {
+                const genderCode = parseInt(cleanId[16]);
+                if (!isNaN(genderCode)) {
+                    gender = genderCode % 2 === 1 ? '男' : '女';
+                }
+            }
+            
+            return {
+                age: age,
+                birthDate: birthDate,
+                gender: gender,
+                calcType: calcType,
+                isFallback: true
+            };
+        }
+
+        // 解析单张身份证
+        function analyzeIdCard(idCard, currentDate) {
+            const cleanId = idCard.trim().toUpperCase().replace(/[^0-9X]/g, '');
+            const val = validateAndCorrectId(idCard);
+            
+            // 第一个失败入口：长度/格式校验失败，尝试兜底
+            if (!val.isValid) {
+                const fallback = fallbackAgeCalculate(cleanId, currentDate);
+                if (fallback) {
+                    const age = fallback.age;
+                    const gender = fallback.gender;
+                    const isSenior5560 = gender !== '未知' && ((gender === '男' && age >= 60) || (gender === '女' && age >= 55));
+                    const isSenior50 = age >= 50;
+                    const isOver70 = age >= 70;
+                    
+                    return {
+                        originalId: idCard,
+                        idCard: cleanId,
+                        birthDate: fallback.birthDate,
+                        gender: gender,
+                        age: age,
+                        isOver70: isOver70,
+                        isSenior5560: isSenior5560,
+                        isSenior50: isSenior50,
+                        wasCorrected: false,
+                        isFallback: true,
+                        calcType: fallback.calcType,
+                        isValid: true
+                    };
+                }
+                return {
+                    originalId: idCard, idCard: '无效身份证', isValid: false, error: val.error
+                };
+            }
+
+            const finalId = val.correctedId;
+            const birthStr = finalId.substr(6,8);
+            const y = parseInt(birthStr.substr(0,4));
+            const m = parseInt(birthStr.substr(4,2)) - 1;
+            const d = parseInt(birthStr.substr(6,2));
+            const birth = new Date(y, m, d);
+
+            // 第二个失败入口：出生日期非法，尝试兜底
+            if (birth.getFullYear() !== y || birth.getMonth() !== m || birth.getDate() !== d) {
+                const fallback = fallbackAgeCalculate(finalId, currentDate);
+                if (fallback) {
+                    const age = fallback.age;
+                    const gender = fallback.gender;
+                    const isSenior5560 = gender !== '未知' && ((gender === '男' && age >= 60) || (gender === '女' && age >= 55));
+                    const isSenior50 = age >= 50;
+                    const isOver70 = age >= 70;
+                    
+                    return {
+                        originalId: idCard,
+                        idCard: finalId,
+                        birthDate: fallback.birthDate,
+                        gender: gender,
+                        age: age,
+                        isOver70: isOver70,
+                        isSenior5560: isSenior5560,
+                        isSenior50: isSenior50,
+                        wasCorrected: val.wasCorrected,
+                        isFallback: true,
+                        calcType: fallback.calcType,
+                        isValid: true
+                    };
+                }
+                return { originalId: idCard, idCard: finalId, isValid: false, error: '出生日期无效' };
+            }
+
+            // 年龄计算
+            let age = currentDate.getFullYear() - y;
+            let curMD = currentDate.getMonth() * 100 + currentDate.getDate();
+            let birMD = m * 100 + d;
+            if (curMD < birMD) age--;
+
+            // 标准解析年龄范围保护 0~120，超出则无效
+            if (age < 0 || age > 120) {
+                return { originalId: idCard, idCard: finalId, isValid: false, error: '年龄超出合理范围（0-120岁）' };
+            }
+
+            // 性别
+            let gender = parseInt(finalId[16]) % 2 === 1 ? '男' : '女';
+            
+            // 核心判断：两种年龄标准
+            const isSenior5560 = (gender === '男' && age >= 60) || (gender === '女' && age >= 55);
+            const isSenior50 = age >= 50;
+            const isOver70 = age >= 70;
+
+            return {
+                originalId: idCard, idCard: finalId,
+                birthDate: `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`,
+                gender: gender, age: age,
+                isOver70: isOver70,
+                isSenior5560: isSenior5560,
+                isSenior50: isSenior50,
+                wasCorrected: val.wasCorrected,
+                isFallback: false,
+                calcType: '',
+                isValid: true
+            };
+        }
+
+        // 计算校验码
+        function calculateCheckCode(body17) {
+            const w = [7,9,10,5,8,4,2,1,6,3,7,9,10,5,8,4,2];
+            const c = ['1','0','X','9','8','7','6','5','4','3','2'];
+            let sum = 0;
+            for(let i=0;i<17;i++) sum += parseInt(body17[i]) * w[i];
+            return c[sum % 11];
+        }
+        
+        // 统计逻辑：4套方案
+        function calculateStats(results) {
+            const all = results.filter(r=>r.isValid);
+            const totalAll = all.length;
+            const removedCount = all.filter(r=>r.isOver70).length;
+            const validList = all.filter(r=>!r.isOver70);
+
+            // 方案1：男60女55 + 含70+
+            const s1_count = all.filter(r=>r.isSenior5560).length;
+            const s1_ratio = totalAll ? (s1_count/totalAll*100).toFixed(2) : 0;
+
+            // 方案2：男60女55 + 剔除70+
+            const s2_total = validList.length;
+            const s2_count = validList.filter(r=>r.isSenior5560).length;
+            const s2_ratio = s2_total ? (s2_count/s2_total*100).toFixed(2) : 0;
+
+            // 方案3：统一50岁 + 含70+
+            const s3_count = all.filter(r=>r.isSenior50).length;
+            const s3_ratio = totalAll ? (s3_count/totalAll*100).toFixed(2) : 0;
+
+            // 方案4：统一50岁 + 剔除70+
+            const s4_count = validList.filter(r=>r.isSenior50).length;
+            const s4_ratio = s2_total ? (s4_count/s2_total*100).toFixed(2) : 0;
+
+            return {
+                totalAll, removedCount,
+                p1: { total: totalAll, count: s1_count, ratio: s1_ratio },
+                p2: { total: s2_total, count: s2_count, ratio: s2_ratio },
+                p3: { total: totalAll, count: s3_count, ratio: s3_ratio },
+                p4: { total: s2_total, count: s4_count, ratio: s4_ratio },
+                details: all
+            };
+        }
+        
+        // 展示结果
+        function displayResults(stats, fullResults) {
+            // 统计摘要（已分组：正常方案红 / 活动方案绿）
+            const summary = `
+            <div class="summary">
+                <h2>📊 统计总览</h2>
+                
+                <div class="normal-group">
+                    <h3>🔴 正常方案（男≥60/女≥55）</h3>
+                    <p>方案1｜含70岁以上：总${stats.totalAll}人，达标${stats.p1.count}人，占比<strong>${stats.p1.ratio}%</strong></p>
+                    <p>方案2｜剔除70岁以上：有效${stats.p2.total}人，达标${stats.p2.count}人，占比<strong>${stats.p2.ratio}%</strong></p>
+                </div>
+                
+                <div class="special-group">
+                    <h3>🟢 活动方案（统一≥50岁）</h3>
+                    <p>方案3｜含70岁以上：总${stats.totalAll}人，达标${stats.p3.count}人，占比<strong>${stats.p3.ratio}%</strong></p>
+                    <p>方案4｜剔除70岁以上：有效${stats.p4.total}人，达标${stats.p4.count}人，占比<strong>${stats.p4.ratio}%</strong></p>
+                </div>
+            </div>`;
+
+            // 明细表格
+            let table = `<h2>📋 人员明细</h2><table><thead>
+                <tr>
+                    <th>序号</th><th>原始身份证</th><th>校准后</th><th>出生日期</th>
+                    <th>性别</th><th>周岁</th><th>≥70</th>
+                    <th>男60/女55</th><th>满50岁</th><th>状态</th>
+                </tr>
+            </thead><tbody>`;
+
+            fullResults.forEach((item, i) => {
+                let cls = '';
+                let status = '✅ 有效';
+                if (!item.isValid) {
+                    cls = 'invalid-row';
+                    status = '❌ 无效';
+                } else if (item.isFallback) {
+                    cls = 'fallback-row';
+                    status = item.calcType;
+                } else if (item.isOver70) {
+                    cls = 'over70-row';
+                    status = '🟡 超70岁';
+                } else if (item.wasCorrected) {
+                    status = '🔧 已校准';
+                }
+
+                table += `
+                <tr class="${cls}">
+                    <td>${i+1}</td>
+                    <td>${item.originalId}</td>
+                    <td>${item.idCard}</td>
+                    <td>${item.birthDate || '-'}</td>
+                    <td>${item.gender || '-'}</td>
+                    <td>${item.age ?? '-'}</td>
+                    <td>${item.isOver70 ? '是' : '-'}</td>
+                    <td class="${item.isSenior5560 ? 'age-yes' : ''}">${item.isSenior5560 ? '是' : '否'}</td>
+                    <td class="${item.isSenior50 ? 'age-yes' : ''}">${item.isSenior50 ? '是' : '否'}</td>
+                    <td>${status}</td>
+                </tr>`;
+            });
+
+            table += `</tbody></table>`;
+
+            // 结论
+            const conclusion = `
+            <h2>📌 最终结论</h2>
+            <p>• 正常方案（男60女55）含70+：<strong style="color:#d32f2f">${stats.p1.ratio}%</strong></p>
+            <p>• 正常方案（男60女55）剔70+：<strong style="color:#d32f2f">${stats.p2.ratio}%</strong></p>
+            <p>• 活动方案（统一50）含70+：<strong style="color:#2e7d32">${stats.p3.ratio}%</strong></p>
+            <p>• 活动方案（统一50）剔70+：<strong style="color:#2e7d32">${stats.p4.ratio}%</strong></p>
+            <p>本次共剔除 ≥70岁 人员 ${stats.removedCount} 人。</p>`;
+
+            document.getElementById('summary').innerHTML = summary;
+            document.getElementById('detailTable').innerHTML = table;
+            document.getElementById('conclusion').innerHTML = conclusion;
+            document.getElementById('results').style.display = 'block';
+        }
+
+        // 清空
+        function clearInput() {
+            if (confirm('确定要清空所有内容吗？')) {
+                document.getElementById('idCards').value = '';
+                document.getElementById('results').style.display = 'none';
+                document.getElementById('validationInfo').style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
